@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Roster to Calendar Generator</title>
+    <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+        .brand-gold { color: #c3a76b; }
+        .brand-red-bg { background-color: #d71921; }
+        .brand-red-bg:hover { background-color: #b8151b; }
+        .glass-card { background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); }
+        .dark .glass-card { background: rgba(31, 41, 55, 0.25); border: 1px solid rgba(255, 255, 255, 0.1); }
+    </style>
+    <script>
+        if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+    </script>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-colors duration-500">
+
+    <div class="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8">
+
+        <header class="text-center mb-8">
+            <h1 class="text-4xl md:text-5xl font-bold brand-gold">Roster to Calendar</h1>
+            <p class="text-lg mt-2 text-gray-600 dark:text-gray-400">Generate an importable calendar from your copied roster.</p>
+        </header>
+
+        <main class="w-full max-w-4xl mx-auto space-y-12">
+            <section class="text-center">
+                <button id="generateBtn" class="brand-red-bg text-white font-bold py-4 px-8 rounded-lg text-xl shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-300">
+                    Create Calendar from Clipboard
+                </button>
+                <div id="statusMessage" class="mt-4 text-sm text-gray-500 dark:text-gray-400 min-h-[20px]"></div>
+                
+                <div id="fallbackArea" class="hidden text-center mt-6">
+                    <p class="mb-2">Could not read from clipboard automatically.</p>
+                    <textarea id="manualTextInput" class="w-full max-w-2xl mx-auto h-48 p-3 border rounded-md bg-gray-200 dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-brand-gold focus:border-transparent" placeholder="Paste your roster table here..."></textarea>
+                    <button id="generateFromTextBtn" class="mt-4 brand-red-bg text-white font-bold py-3 px-6 rounded-lg">
+                        Generate from Pasted Content
+                    </button>
+                </div>
+            </section>
+
+            <section id="instructions" class="glass-card rounded-xl p-6 md:p-8">
+                <h2 class="text-2xl font-bold mb-4 border-b border-gray-300 dark:border-gray-600 pb-2 brand-gold">How to Use</h2>
+                 <div class="space-y-6">
+                   <div>
+                        <h3 class="font-bold text-lg mb-2">Method 1: Bookmarklet (Recommended)</h3>
+                        <p class="mb-3 text-gray-600 dark:text-gray-300">This is the most reliable method. It copies the underlying HTML structure of the table, ensuring accurate parsing.</p>
+                        <ol class="list-decimal list-inside space-y-2 text-gray-600 dark:text-ray-300">
+                            <li>Drag this button to your browser's Bookmarks Bar: 
+                                <a id="bookmarkletLink" href="javascript:(function(){const e='#PrintRosterDiv-ModalBody',t=document.querySelector(e);if(!t){alert('Error: Could not find the main container with ID: PrintRosterDiv-ModalBody');return}const o=t.cloneNode(!0),r=o.querySelector('#SVGContainer');r&&r.remove();const n=new Blob([o.outerHTML],{type:'text/html'}),a=new ClipboardItem({'text/html':n});navigator.clipboard.write([a]).then(()=>alert('Roster HTML copied successfully!')).catch(e=>alert('Error while copying: '+e))})();" class="inline-block brand-red-bg text-white font-semibold py-2 px-4 rounded-md text-center transition-colors duration-300">Roster Copier</a>
+                            </li>
+                            <li>Go to your roster page and click the "Roster Copier" bookmark.</li>
+                            <li>Return here and click the big red "Create Calendar" button above.</li>
+                        </ol>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-lg mb-2">Method 2: Manual Copy & Paste</h3>
+                        <p class="text-gray-600 dark:text-gray-300">If the bookmarklet doesn't work, you can copy the roster table directly. This method may be less accurate.</p>
+                         <ol class="list-decimal list-inside space-y-1 text-gray-600 dark:text-gray-300">
+                            <li>On your roster page, select and copy the entire table of duties.</li>
+                            <li>Come back here and click the big red button. If it fails, a text box will appear for you to paste the content.</li>
+                        </ol>
+                    </div>
+                </div>
+            </section>
+        </main>
+        
+        <footer class="mt-12 text-center text-xs text-gray-500 dark:text-gray-500">
+            <p>&copy; 2024. All rights reserved. Design inspired by the elegance of Emirates.</p>
+            <p class="mt-2">Note: This tool is not affiliated with any airline.</p>
+        </footer>
+    </div>
+
+    <script type="module">
+        document.addEventListener('DOMContentLoaded', () => {
+            const generateBtn = document.getElementById('generateBtn');
+            const statusMessage = document.getElementById('statusMessage');
+            const fallbackArea = document.getElementById('fallbackArea');
+            const manualTextInput = document.getElementById('manualTextInput');
+            const generateFromTextBtn = document.getElementById('generateFromTextBtn');
+            
+            const airportTimezones = {
+                'DXB': 'Asia/Dubai', 'JED': 'Asia/Riyadh', 'LHR': 'Europe/London', 'CDG': 'Europe/Paris', 'FRA': 'Europe/Berlin', 'JFK': 'America/New_York', 'LAX': 'America/Los_Angeles', 'SFO': 'America/Los_Angeles', 'BKK': 'Asia/Bangkok', 'SIN': 'Asia/Singapore', 'HKG': 'Asia/Hong_Kong', 'NRT': 'Asia/Tokyo', 'SYD': 'Australia/Sydney', 'MEL': 'Australia/Melbourne', 'AKL': 'Pacific/Auckland', 'ZRH': 'Europe/Zurich', 'GVA': 'Europe/Zurich', 'AMS': 'Europe/Amsterdam', 'BCN': 'Europe/Madrid', 'MAD': 'Europe/Madrid', 'FCO': 'Europe/Rome', 'MXP': 'Europe/Rome', 'IST': 'Europe/Istanbul', 'IAD': 'America/New_York', 'BOS': 'America/New_York', 'ORD': 'America/Chicago', 'DFW': 'America/Chicago', 'SEA': 'America/Los_Angeles', 'YYZ': 'America/Toronto', 'GRU': 'America/Sao_Paulo', 'EZE': 'America/Argentina/Buenos_Aires', 'CAI': 'Africa/Cairo', 'JNB': 'Africa/Johannesburg', 'CPT': 'Africa/Johannesburg', 'LOS': 'Africa/Lagos', 'BOM': 'Asia/Kolkata', 'DEL': 'Asia/Kolkata', 'BLR': 'Asia/Kolkata', 'MAA': 'Asia/Kolkata', 'AMD': 'Asia/Kolkata', 'KUL': 'Asia/Kuala_Lumpur', 'MNL': 'Asia/Manila', 'ICN': 'Asia/Seoul', 'PVG': 'Asia/Shanghai', 'PEK': 'Asia/Shanghai', 'CAN': 'Asia/Shanghai', 'VIE': 'Europe/Vienna', 'BRU': 'Europe/Brussels', 'CPH': 'Europe/Copenhagen', 'DUB': 'Europe/Dublin', 'MUC': 'Europe/Berlin', 'OSL': 'Europe/Oslo', 'ARN': 'Europe/Stockholm', 'DME': 'Europe/Moscow', 'ATH': 'Europe/Athens', 'LIS': 'Europe/Lisbon', 'MAN': 'Europe/London', 'BHX': 'Europe/London', 'GLA': 'Europe/London', 'NCL': 'Europe/London', 'LGW': 'Europe/London', 'RUH': 'Asia/Riyadh', 'DMM': 'Asia/Riyadh', 'KWI': 'Asia/Kuwait', 'BAH': 'Asia/Bahrain', 'MCT': 'Asia/Muscat', 'CMB': 'Asia/Colombo', 'MLE': 'Indian/Maldives', 'MRU': 'Indian/Mauritius', 'SEZ': 'Indian/Mahe', 'IKA': 'Asia/Tehran', 'AMM': 'Asia/Amman', 'BEY': 'Asia/Beirut', 'ALG': 'Africa/Algiers', 'TUN': 'Africa/Tunis', 'CMN': 'Africa/Casablanca', 'ADD': 'Africa/Addis_Ababa', 'NBO': 'Africa/Nairobi', 'HRE': 'Africa/Harare', 'LUN': 'Africa/Lusaka',
+            };
+            
+            const airportCities = {
+                'DXB': 'Dubai', 'JED': 'Jeddah', 'LHR': 'London', 'CDG': 'Paris', 'FRA': 'Frankfurt', 'JFK': 'New York', 'LAX': 'Los Angeles', 'SFO': 'San Francisco', 'BKK': 'Bangkok', 'SIN': 'Singapore', 'HKG': 'Hong Kong', 'NRT': 'Tokyo', 'SYD': 'Sydney', 'MEL': 'Melbourne', 'AKL': 'Auckland', 'ZRH': 'Zurich', 'GVA': 'Geneva', 'AMS': 'Amsterdam', 'BCN': 'Barcelona', 'MAD': 'Madrid', 'FCO': 'Rome', 'MXP': 'Milan', 'IST': 'Istanbul', 'IAD': 'Washington D.C.', 'BOS': 'Boston', 'ORD': 'Chicago', 'DFW': 'Dallas', 'SEA': 'Seattle', 'YYZ': 'Toronto', 'GRU': 'Sao Paulo', 'EZE': 'Buenos Aires', 'CAI': 'Cairo', 'JNB': 'Johannesburg', 'CPT': 'Cape Town', 'LOS': 'Lagos', 'BOM': 'Mumbai', 'DEL': 'Delhi', 'BLR': 'Bengaluru', 'MAA': 'Chennai', 'AMD': 'Ahmedabad', 'KUL': 'Kuala Lumpur', 'MNL': 'Manila', 'ICN': 'Seoul', 'PVG': 'Shanghai', 'PEK': 'Beijing', 'CAN': 'Guangzhou', 'VIE': 'Vienna', 'BRU': 'Brussels', 'CPH': 'Copenhagen', 'DUB': 'Dublin', 'MUC': 'Munich', 'OSL': 'Oslo', 'ARN': 'Stockholm', 'DME': 'Moscow', 'ATH': 'Athens', 'LIS': 'Lisbon', 'MAN': 'Manchester', 'BHX': 'Birmingham', 'GLA': 'Glasgow', 'NCL': 'Newcastle', 'LGW': 'London', 'RUH': 'Riyadh', 'DMM': 'Dammam', 'KWI': 'Kuwait City', 'BAH': 'Bahrain', 'MCT': 'Muscat', 'CMB': 'Colombo', 'MLE': 'Malé', 'MRU': 'Mauritius', 'SEZ': 'Seychelles', 'IKA': 'Tehran', 'AMM': 'Amman', 'BEY': 'Beirut', 'ALG': 'Algiers', 'TUN': 'Tunis', 'CMN': 'Casablanca', 'ADD': 'Addis Ababa', 'NBO': 'Nairobi', 'HRE': 'Harare', 'LUN': 'Lusaka'
+            };
+
+
+            async function handleGenerateClick() {
+                statusMessage.textContent = 'Reading from clipboard...';
+                fallbackArea.classList.add('hidden');
+                try {
+                    const clipboardItems = await navigator.clipboard.read();
+                    let clipboardContent = null;
+                    for (const item of clipboardItems) {
+                        if (item.types.includes('text/html')) {
+                            const blob = await item.getType('text/html');
+                            clipboardContent = await blob.text();
+                            break;
+                        }
+                    }
+                    if (!clipboardContent) clipboardContent = await navigator.clipboard.readText();
+                    if (clipboardContent && clipboardContent.trim() !== '') processRoster(clipboardContent);
+                    else throw new Error("Clipboard is empty or content not recognized.");
+                } catch (err) {
+                     console.error('Clipboard API error:', err.message);
+                     statusMessage.textContent = "Could not read clipboard. Please paste your roster below.";
+                     fallbackArea.classList.remove('hidden');
+                }
+            }
+            
+            function handleGenerateFromText() {
+                const content = manualTextInput.value;
+                if (content && content.trim() !== '') processRoster(content);
+                else statusMessage.textContent = 'Text area is empty. Please paste your roster first.';
+            }
+            
+            function processRoster(content) {
+                statusMessage.textContent = 'Roster content found! Analyzing with timezone data...';
+                const isHtml = /<[a-z][\s\S]*>/i.test(content);
+                const events = isHtml ? parseRosterHtml(content) : parseRosterText(content);
+                
+                if (events && events.length > 0) {
+                    statusMessage.textContent = `Successfully parsed ${events.length} events. Creating calendar file...`;
+                    createAndDownloadIcs(events);
+                } else {
+                     statusMessage.textContent = 'Could not find any valid events. Check roster format or unmapped airports in console.';
+                }
+            }
+            
+            function parseRosterHtml(htmlString) {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(htmlString, 'text/html');
+                let cleanText = "";
+                const headerText = doc.body.innerText || "";
+                const dutyIndex = headerText.indexOf('Duty');
+                if (dutyIndex !== -1) cleanText += headerText.substring(0, dutyIndex) + "\n";
+                const rows = doc.querySelectorAll('tr');
+                rows.forEach(row => {
+                    const cells = Array.from(row.querySelectorAll('td, th'));
+                    cleanText += cells.map(cell => cell.innerText.trim()).join('\t') + '\n';
+                });
+                return parseRosterText(cleanText);
+            }
+
+            function parseRosterText(text) {
+                const lines = text.split('\n').filter(line => line.trim() !== '');
+                const events = [];
+                
+                let rosterYear, rosterStartMonth;
+                for (const line of lines) {
+                    const periodMatch = line.match(/(\d{1,2}-\d{1,2}-(\d{4}))\s+to/);
+                    if (periodMatch) {
+                        rosterYear = parseInt(periodMatch[2], 10);
+                        rosterStartMonth = parseInt(periodMatch[1].split('-')[1], 10);
+                        break;
+                    }
+                }
+
+                if (!rosterYear || !rosterStartMonth) {
+                    statusMessage.textContent = "Error: Roster date range (e.g., 01-06-2025 to...) not found.";
+                    return [];
+                }
+                
+                let lastFlightInfo = null;
+                let currentDate = null;
+
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    if (!line) continue;
+                    
+                    const parts = line.split(/\s+/);
+                    const dayMatch = parts[0].match(/^(\d{1,2})$/) && parts[1] && parts[1].match(/^[A-Za-z]{3}$/);
+
+                    if (dayMatch) {
+                        const day = parseInt(parts[0], 10);
+                        let currentMonth = (currentDate ? currentDate.month : rosterStartMonth);
+                        let currentYear = (currentDate ? currentDate.year : rosterYear);
+                        if (currentDate && day < currentDate.day) {
+                             currentMonth++;
+                             if (currentMonth > 12) {
+                                 currentMonth = 1;
+                                 currentYear++;
+                             }
+                        }
+                        currentDate = luxon.DateTime.fromObject({ year: currentYear, month: currentMonth, day: day });
+                    }
+
+                    if (!currentDate) continue;
+
+                    let dutyCode = dayMatch ? (parts[2] || '') : (parts[0] || '');
+                    
+                    const createAllDayEvent = (title, code) => {
+                        events.push({ title, description: `Roster code: ${code}`, start: currentDate.toJSDate(), allDay: true });
+                    };
+
+                    const allDayCodes = ['XX', 'XXV', 'XXR', 'LV', 'LLV', 'SK'];
+                    const isAllDayCode = allDayCodes.includes(dutyCode);
+
+                    if (isAllDayCode) {
+                        let eventTitle = '';
+                        if (dutyCode === 'XX') eventTitle = '🏠 Day OFF';
+                        else if (dutyCode === 'XXV') eventTitle = '🏠 Day OFF (for Visa Change)';
+                        else if (dutyCode === 'XXR') eventTitle = '🏠 Day OFF (Reserve Crew)';
+                        else if (dutyCode === 'LV') eventTitle = '🏝️ Annual Leave';
+                        else if (dutyCode === 'LLV') eventTitle = '🏝️ Live Leave';
+                        else if (dutyCode === 'SK') eventTitle = '😷 Sick';
+                        
+                        createAllDayEvent(eventTitle, dutyCode);
+
+                        let lookaheadIndex = i + 1;
+                        while (lookaheadIndex < lines.length) {
+                            const nextLineParts = lines[lookaheadIndex].trim().split(/\s+/);
+                            const nextLineHasDate = nextLineParts[0].match(/^(\d{1,2})$/) && nextLineParts[1] && nextLineParts[1].match(/^[A-Za-z]{3}$/);
+                            const nextLineDuty = nextLineHasDate ? (nextLineParts[2] || '') : (nextLineParts[0] || '');
+                            
+                            if (!nextLineDuty || nextLineDuty === dutyCode) {
+                                currentDate = currentDate.plus({ days: 1 });
+                                createAllDayEvent(eventTitle, dutyCode);
+                                i++;
+                                lookaheadIndex++;
+                            } else {
+                                break;
+                            }
+                        }
+                        
+                        lastFlightInfo = null;
+                        continue;
+                    }
+
+                    let flightData = null;
+                    const lineAsString = parts.join(' ');
+
+                    let match = lineAsString.match(/(\d{2}:\d{2})\s*-\s*(\d+)\s+([A-Z]{3})\s+(\d{2}:\d{2})\s+([A-Z]{3})\s+(\d{2}:\d{2})/);
+                    if (match) {
+                        flightData = {
+                            reportTime: match[1], flightNo: `EK${match[2]}`, depStation: match[3],
+                            depTime: match[4], arrStation: match[5], arrTime: match[6]
+                        };
+                    } else {
+                        match = lineAsString.match(/(\d{2}:\d{2})\s+(\d+)\s+([A-Z]{3})\s+(\d{2}:\d{2})\s+([A-Z]{3})\s+(\d{2}:\d{2})/);
+                        if (match) {
+                           flightData = {
+                                reportTime: match[1], flightNo: `EK${match[2]}`, depStation: match[3],
+                                depTime: match[4], arrStation: match[5], arrTime: match[6]
+                            };
+                        }
+                    }
+
+                    if (flightData) {
+                        // --- INICIO DE LA LÓGICA DE TIEMPOS DE VUELO DETALLADA ---
+
+                        const { reportTime, flightNo, depStation, depTime, arrStation, arrTime } = flightData;
+                        
+                        // 1. Asignar zonas horarias correctas a las ciudades de salida y llegada.
+                        const depTz = airportTimezones[depStation] || 'Asia/Dubai';
+                        const arrTz = airportTimezones[arrStation] || 'Asia/Dubai';
+
+                        // 2. Convertir las horas leídas (que son strings) a números.
+                        const [reportH, reportM] = reportTime.split(':').map(Number);
+                        const [depH, depM] = depTime.split(':').map(Number);
+                        const [arrH, arrM] = arrTime.split(':').map(Number);
+                        
+                        // 3. Crear los momentos de reporte y salida. Se usa la fecha del parte (`currentDate`) y se le aplica la zona horaria
+                        //    de la ciudad de salida (depTz), respetando la hora LOCAL del parte.
+                        let reportDateTime = currentDate.setZone(depTz).set({ hour: reportH, minute: reportM });
+                        let departureDateTime = currentDate.setZone(depTz).set({ hour: depH, minute: depM });
+                        
+                        // 4. Crear el momento de llegada. Para máxima precisión, se calcula relativo al momento EXACTO de la salida.
+                        //    Esto maneja correctamente los cambios de zona horaria y de día.
+                        let arrivalDateTime = departureDateTime.setZone(arrTz).set({ hour: arrH, minute: arrM });
+
+                        // 5. Corregir fechas para vuelos que cruzan la medianoche.
+                        //    Si la salida es a las 00:30 y el reporte a las 23:00, la salida es del día siguiente.
+                        if (departureDateTime < reportDateTime) departureDateTime = departureDateTime.plus({ days: 1 });
+                        //    Si la llegada es antes o a la misma hora que la salida (ej. sale 23:00, llega 04:00), la llegada es del día siguiente.
+                        if (arrivalDateTime <= departureDateTime) arrivalDateTime = arrivalDateTime.plus({ days: 1 });
+                        
+                        // --- FIN DE LA LÓGICA DE TIEMPOS ---
+
+                        if (lastFlightInfo) {
+                            const layoverDuration = reportDateTime.diff(lastFlightInfo.endDate);
+                            const hours = Math.floor(layoverDuration.as('hours'));
+                            const minutes = Math.floor(layoverDuration.as('minutes')) % 60;
+                            const durationStr = `${hours}h ${minutes}m`;
+                            
+                            events.push({
+                                title: `💼 Layover in ${lastFlightInfo.location} (${durationStr})`, 
+                                location: lastFlightInfo.location,
+                                start: lastFlightInfo.endDate.toJSDate(), 
+                                end: reportDateTime.toJSDate()
+                            });
+                        }
+                        
+                        events.push({
+                            title: '🕑 REPORT', 
+                            description: `Report at ${reportTime} local for flight ${flightNo}`, 
+                            location: depStation,
+                            start: reportDateTime.toJSDate(), 
+                            end: departureDateTime.toJSDate()
+                        });
+                        
+                        const depCity = airportCities[depStation] || depStation;
+                        const arrCity = airportCities[arrStation] || arrStation;
+                        events.push({
+                            title: `✈️ ${depCity} (${depStation}) - ${arrCity} (${arrStation})`, 
+                            description: `Flight ${flightNo}`, location: `${depStation}-${arrStation}`,
+                            start: departureDateTime.toJSDate(), end: arrivalDateTime.toJSDate()
+                        });
+
+                        lastFlightInfo = { endDate: arrivalDateTime, location: airportCities[arrStation] || arrStation };
+                    
+                    } else {
+                        lastFlightInfo = null;
+                        const timeRangeMatch = line.match(/(\d{2}:\d{2})-(\d{2}:\d{2})/);
+                         if (timeRangeMatch) {
+                            const [startH, startM] = timeRangeMatch[1].split(':').map(Number);
+                            const [endH, endM] = timeRangeMatch[2].split(':').map(Number);
+                            let title = line;
+                            if(dayMatch) title = parts.slice(2).join(' ');
+
+                            events.push({
+                                title: `Duty: ${title}`,
+                                description: `Roster line: ${line}`,
+                                start: currentDate.set({hour: startH, minute: startM}).toJSDate(),
+                                end: currentDate.set({hour: endH, minute: endM}).toJSDate()
+                            });
+                        }
+                    }
+                }
+                return events;
+            }
+
+            function createAndDownloadIcs(events) {
+                const toIcsDate = (date, allDay = false) => {
+                    if (allDay) return luxon.DateTime.fromJSDate(date).toFormat('yyyyMMdd');
+                    return luxon.DateTime.fromJSDate(date).toUTC().toFormat("yyyyMMdd'T'HHmmss'Z'");
+                };
+                let icsContent = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//RosterCalendarGenerator//EN'];
+                events.forEach(event => {
+                    const uid = `${Date.now()}${Math.random()}@roster.generator`;
+                    const dtstamp = toIcsDate(new Date());
+                    icsContent.push('BEGIN:VEVENT', `UID:${uid}`, `DTSTAMP:${dtstamp}`);
+                    if (event.allDay) {
+                        icsContent.push(`DTSTART;VALUE=DATE:${toIcsDate(event.start, true)}`);
+                        const nextDay = luxon.DateTime.fromJSDate(event.start).plus({days: 1}).toJSDate();
+                        icsContent.push(`DTEND;VALUE=DATE:${toIcsDate(nextDay, true)}`);
+                    } else {
+                        icsContent.push(`DTSTART:${toIcsDate(event.start)}`, `DTEND:${toIcsDate(event.end)}`);
+                    }
+                    if(event.location) icsContent.push(`LOCATION:${event.location}`);
+                    if(event.title) icsContent.push(`SUMMARY:${event.title}`);
+                    if(event.description) icsContent.push(`DESCRIPTION:${event.description.replace(/\n/g, '\\n')}`);
+                    icsContent.push('END:VEVENT');
+                });
+                icsContent.push('END:VCALENDAR');
+                const icsFile = icsContent.join('\r\n');
+                const blob = new Blob([icsFile], { type: 'text/calendar;charset=utf-8' });
+                const link = document.createElement('a');
+                link.setAttribute('href', URL.createObjectURL(blob));
+                const dateString = new Date().toISOString().slice(0, 10);
+                link.setAttribute('download', `roster-${dateString}.ics`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                statusMessage.textContent = 'Calendar file download initiated!';
+                setTimeout(() => { statusMessage.textContent = ''; fallbackArea.classList.add('hidden'); }, 5000);
+            }
+
+            generateBtn.addEventListener('click', handleGenerateClick);
+            generateFromTextBtn.addEventListener('click', handleGenerateFromText);
+        });
+    </script>
+</body>
+</html>
