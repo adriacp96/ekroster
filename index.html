@@ -296,6 +296,22 @@
 				font-size: 18px;
 			}
 
+			.paste-output {
+				width: 100%;
+				min-height: 140px;
+				border-radius: var(--radius-md);
+				border: 1px solid rgba(11, 11, 16, 0.12);
+				padding: 12px;
+				font-family: "Space Grotesk", sans-serif;
+				resize: vertical;
+				background: #fff;
+			}
+
+			.paste-actions {
+				display: flex;
+				justify-content: flex-end;
+			}
+
 			.meta-row {
 				display: grid;
 				gap: 12px;
@@ -471,6 +487,11 @@
 				</div>
 				<p id="paste-help">Press Cmd+V to paste the roster table from SharePoint.</p>
 				<div id="paste-fallback" class="paste-box" contenteditable="true"></div>
+				<label for="paste-output">Plain text table</label>
+				<textarea id="paste-output" class="paste-output" readonly></textarea>
+				<div class="paste-actions">
+					<button class="btn btn-secondary" id="copy-plain" type="button">Copy plain text</button>
+				</div>
 			</div>
 		</div>
 
@@ -480,6 +501,8 @@
 			const pasteFallback = document.getElementById("paste-fallback");
 			const pasteHelp = document.getElementById("paste-help");
 			const pasteClose = document.getElementById("paste-close");
+			const pasteOutput = document.getElementById("paste-output");
+			const copyPlain = document.getElementById("copy-plain");
 			const timeline = document.getElementById("timeline");
 			const summary = document.getElementById("summary");
 			const stats = document.getElementById("stats");
@@ -496,6 +519,7 @@
 			const openPasteModal = (message) => {
 				pasteHelp.textContent = message;
 				pasteFallback.textContent = "";
+				pasteOutput.value = "";
 				pasteModal.classList.add("is-open");
 				pasteModal.setAttribute("aria-hidden", "false");
 				setTimeout(() => pasteFallback.focus(), 0);
@@ -632,6 +656,13 @@ Day Off,2026-02-16 00:00,2026-02-16 23:59,Home,`;
 					doc,
 					matrix: matrix.filter((row) => row.some((cell) => cell && cell !== "")),
 				};
+			};
+
+			const rowsToPlainText = (rows) => {
+				return rows
+					.map((row) => row.map((cell) => String(cell || "").replace(/\s+/g, " ").trim()).join("\t"))
+					.join("\n")
+					.trim();
 			};
 
 			const normalizeHeader = (value) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -1101,15 +1132,34 @@ Day Off,2026-02-16 00:00,2026-02-16 23:59,Home,`;
 				closePasteModal();
 			});
 
+			copyPlain.addEventListener("click", async () => {
+				if (!pasteOutput.value.trim()) return;
+				await navigator.clipboard.writeText(pasteOutput.value);
+			});
+
 			pasteFallback.addEventListener("paste", (event) => {
 				const html = event.clipboardData && event.clipboardData.getData("text/html");
 				const text = event.clipboardData && event.clipboardData.getData("text/plain");
-				const content = html || text || "";
-				if (content) {
+				if (html) {
 					event.preventDefault();
-					pastedHtml = content;
+					const parsed = parseHtmlTable(html);
+					const plainText = parsed ? rowsToPlainText(parsed.matrix) : "";
+					if (plainText) {
+						pasteOutput.value = plainText;
+						pastedHtml = plainText;
+						pasteBtn.textContent = "✓ Roster pasted";
+						parseRoster();
+					}
+					return;
+				}
+
+				if (text) {
+					event.preventDefault();
+					const rows = parseTextToRows(text);
+					const plainText = rowsToPlainText(rows);
+					pasteOutput.value = plainText;
+					pastedHtml = plainText;
 					pasteBtn.textContent = "✓ Roster pasted";
-					closePasteModal();
 					parseRoster();
 				}
 			});
@@ -1122,10 +1172,15 @@ Day Off,2026-02-16 00:00,2026-02-16 23:59,Home,`;
 							if (item.types.includes("text/html")) {
 								const blob = await item.getType("text/html");
 								const html = await blob.text();
-								pastedHtml = html;
-								pasteBtn.textContent = "✓ Roster pasted";
-								await parseRoster();
-								return;
+								const parsed = parseHtmlTable(html);
+								const plainText = parsed ? rowsToPlainText(parsed.matrix) : "";
+								if (plainText) {
+									pasteOutput.value = plainText;
+									pastedHtml = plainText;
+									pasteBtn.textContent = "✓ Roster pasted";
+									await parseRoster();
+									return;
+								}
 							}
 						}
 					}
@@ -1133,7 +1188,10 @@ Day Off,2026-02-16 00:00,2026-02-16 23:59,Home,`;
 					if (navigator.clipboard && navigator.clipboard.readText) {
 						const text = await navigator.clipboard.readText();
 						if (text && text.trim()) {
-							pastedHtml = text;
+							const rows = parseTextToRows(text);
+							const plainText = rowsToPlainText(rows);
+							pasteOutput.value = plainText;
+							pastedHtml = plainText;
 							pasteBtn.textContent = "✓ Roster pasted";
 							await parseRoster();
 							return;
