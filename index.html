@@ -923,21 +923,34 @@ Day Off,2026-02-16 00:00,2026-02-16 23:59,Home,`;
 
 			pasteBtn.addEventListener("click", async () => {
 				try {
-					const items = await navigator.clipboard.read();
-					for (const item of items) {
-						if (item.types.includes("text/html")) {
-							const blob = await item.getType("text/html");
-							const html = await blob.text();
-							pastedHtml = html;
+					if (navigator.clipboard && navigator.clipboard.read) {
+						const items = await navigator.clipboard.read();
+						for (const item of items) {
+							if (item.types.includes("text/html")) {
+								const blob = await item.getType("text/html");
+								const html = await blob.text();
+								pastedHtml = html;
+								pasteBtn.textContent = "✓ Roster pasted";
+								await parseRoster();
+								return;
+							}
+						}
+					}
+
+					if (navigator.clipboard && navigator.clipboard.readText) {
+						const text = await navigator.clipboard.readText();
+						if (text && text.trim()) {
+							pastedHtml = text;
 							pasteBtn.textContent = "✓ Roster pasted";
 							await parseRoster();
 							return;
 						}
 					}
-					alert("No HTML content found in clipboard. Copy the roster table from SharePoint.");
+
+					alert("Clipboard was empty. Copy the roster table from SharePoint and try again.");
 				} catch (err) {
 					console.error("Clipboard read failed:", err);
-					alert("Could not read clipboard. Make sure you copied the roster table.");
+					alert("Clipboard access failed. Try copying again or use a browser that allows clipboard access on localhost.");
 				}
 			});
 
