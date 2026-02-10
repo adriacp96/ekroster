@@ -375,10 +375,8 @@
 			<section class="grid">
 				<div class="panel upload">
 					<h3>1. Paste your roster</h3>
-					<p>Copy your roster table from SharePoint and paste it here.</p>
-					<div id="roster-html" class="paste-box" contenteditable="true">
-						Click here, then paste directly from the roster page
-					</div>
+					<p>Copy your roster table from SharePoint first, then click the button below.</p>
+					<button class="btn btn-primary" id="paste-btn" style="width: 100%;">📋 Paste & Fetch Roster</button>
 					<div class="meta-row">
 						<select id="timezone">
 							<option value="local">Use local time</option>
@@ -386,7 +384,6 @@
 						</select>
 						<input type="text" id="calendar-name" value="Crew Roster" />
 					</div>
-					<button class="btn btn-primary" id="parse-btn">Fetch flights & events</button>
 				</div>
 
 				<div class="panel">
@@ -430,8 +427,7 @@
 		</div>
 
 		<script>
-			const rosterHtml = document.getElementById("roster-html");
-			const parseBtn = document.getElementById("parse-btn");
+			const pasteBtn = document.getElementById("paste-btn");
 			const timeline = document.getElementById("timeline");
 			const summary = document.getElementById("summary");
 			const stats = document.getElementById("stats");
@@ -914,35 +910,39 @@ Day Off,2026-02-16 00:00,2026-02-16 23:59,Home,`;
 			loadDemo.addEventListener("click", () => {
 				const demoHtml = `<table><tr><th>Date</th><th>Type</th><th>Flight</th><th>From</th><th>To</th><th>Start</th><th>End</th></tr><tr><td>12</td><td>Duty</td><td>EK123</td><td>DXB</td><td>LHR</td><td>06:30</td><td>12:45</td></tr><tr><td>13</td><td>XX</td><td></td><td></td><td></td><td>00:00</td><td>23:59</td></tr></table>`;
 				pastedHtml = demoHtml;
-				rosterHtml.textContent = "Demo roster loaded. Click Fetch flights & events.";
+				pasteBtn.textContent = "✓ Roster loaded";
 				parseRoster();
 			});
 
 			clearAll.addEventListener("click", () => {
 				pastedHtml = "";
-				rosterHtml.textContent = "Click here, then paste directly from the roster page";
+				pasteBtn.textContent = "📋 Paste & Fetch Roster";
 				events = [];
 				renderEvents();
 			});
 
-			parseBtn.addEventListener("click", parseRoster);
+			pasteBtn.addEventListener("click", async () => {
+				try {
+					const items = await navigator.clipboard.read();
+					for (const item of items) {
+						if (item.types.includes("text/html")) {
+							const blob = await item.getType("text/html");
+							const html = await blob.text();
+							pastedHtml = html;
+							pasteBtn.textContent = "✓ Roster pasted";
+							await parseRoster();
+							return;
+						}
+					}
+					alert("No HTML content found in clipboard. Copy the roster table from SharePoint.");
+				} catch (err) {
+					console.error("Clipboard read failed:", err);
+					alert("Could not read clipboard. Make sure you copied the roster table.");
+				}
+			});
+
 			downloadBtn.addEventListener("click", downloadIcs);
 			copyBtn.addEventListener("click", copyIcs);
-
-			rosterHtml.addEventListener("focus", () => {
-				if (!pastedHtml && rosterHtml.textContent === "Click here, then paste directly from the roster page") {
-					rosterHtml.textContent = "";
-				}
-			});
-
-			rosterHtml.addEventListener("paste", (event) => {
-				const html = event.clipboardData && event.clipboardData.getData("text/html");
-				if (html) {
-					event.preventDefault();
-					pastedHtml = html;
-					rosterHtml.textContent = "Roster HTML captured. Click Fetch flights & events.";
-				}
-			});
 
 			if ("serviceWorker" in navigator) {
 				window.addEventListener("load", () => {
