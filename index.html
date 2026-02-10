@@ -675,31 +675,69 @@ Day Off,2026-02-16 00:00,2026-02-16 23:59,Home,`;
 				return `${datePart} ${timePart}`;
 			};
 
+			const isLikelyHeaderRow = (row) => {
+				if (!row || !row.length) return false;
+				const normalized = row.map((cell) => normalizeHeader(cell || ""));
+				return normalized.some((cell) =>
+					["date", "day", "type", "flight", "from", "to", "dep", "arr", "std", "sta", "report", "end", "station"].some(
+						(keyword) => cell.includes(keyword),
+					)
+				);
+			};
+
 			const parseRosterHtml = (content) => {
 				const parsed = parseHtmlTable(content);
 				if (!parsed) return [];
 				const { doc, matrix } = parsed;
-				
-				// Find header row with flexible detection
-				const headerIndex = matrix.findIndex((row) => {
-					const normalized = row.map((cell) => normalizeHeader(cell || ""));
-					return normalized.includes("date") || normalized.some((cell) => cell.includes("flight") || cell.includes("dep") || cell.includes("arr"));
-				});
-				if (headerIndex === -1) return [];
-				
-				const headers = matrix[headerIndex].map((cell) => normalizeHeader(cell || ""));
-				const rows = matrix.slice(headerIndex + 1);
-				
-				// Flexible column detection using findHeaderIndex
-				const dateIndex = findHeaderIndex(headers, ["date", "day"]);
-				const typeIndex = findHeaderIndex(headers, ["type", "code", "dutycode"]);
-				const repTimeIndex = findHeaderIndex(headers, ["rep", "report", "std", "dept", "dep", "off", "reporttime"]);
-				const flightIndex = findHeaderIndex(headers, ["flight", "flt", "flightno", "flightnumber"]);
-				const depStationIndex = findHeaderIndex(headers, ["from", "origin", "departure", "depapt", "dep", "sta"]);
-				const depTimeIndex = findHeaderIndex(headers, ["std", "dept", "dep", "depart", "off", "reporttime"]);
-				const arrStationIndex = findHeaderIndex(headers, ["to", "dest", "destination", "arrapt", "arr"]);
-				const arrTimeIndex = findHeaderIndex(headers, ["sta", "arr", "arrive", "on", "arrivaltime"]);
-				const endTimeIndex = findHeaderIndex(headers, ["end", "endtime", "finishtime", "finish"]);
+
+				const headerIndex = matrix.findIndex((row) => isLikelyHeaderRow(row));
+				const hasHeader = headerIndex !== -1;
+				const headers = hasHeader ? matrix[headerIndex].map((cell) => normalizeHeader(cell || "")) : [];
+				const rows = hasHeader ? matrix.slice(headerIndex + 1) : matrix;
+
+				const defaultIndexes = {
+					dateIndex: 0,
+					typeIndex: 1,
+					repTimeIndex: 2,
+					flightIndex: 3,
+					depStationIndex: 4,
+					depTimeIndex: 5,
+					arrStationIndex: 6,
+					arrTimeIndex: 7,
+					endTimeIndex: 9,
+				};
+
+				const resolveIndex = (index, fallback) => (index === -1 ? fallback : index);
+				const dateIndex = resolveIndex(hasHeader ? findHeaderIndex(headers, ["date", "day"]) : -1, defaultIndexes.dateIndex);
+				const typeIndex = resolveIndex(hasHeader ? findHeaderIndex(headers, ["type", "code", "dutycode"]) : -1, defaultIndexes.typeIndex);
+				const repTimeIndex = resolveIndex(
+					hasHeader ? findHeaderIndex(headers, ["rep", "report", "std", "dept", "dep", "off", "reporttime"]) : -1,
+					defaultIndexes.repTimeIndex,
+				);
+				const flightIndex = resolveIndex(
+					hasHeader ? findHeaderIndex(headers, ["flight", "flt", "flightno", "flightnumber"]) : -1,
+					defaultIndexes.flightIndex,
+				);
+				const depStationIndex = resolveIndex(
+					hasHeader ? findHeaderIndex(headers, ["from", "origin", "departure", "depapt", "dep", "sta"]) : -1,
+					defaultIndexes.depStationIndex,
+				);
+				const depTimeIndex = resolveIndex(
+					hasHeader ? findHeaderIndex(headers, ["std", "dept", "dep", "depart", "off", "reporttime"]) : -1,
+					defaultIndexes.depTimeIndex,
+				);
+				const arrStationIndex = resolveIndex(
+					hasHeader ? findHeaderIndex(headers, ["to", "dest", "destination", "arrapt", "arr"]) : -1,
+					defaultIndexes.arrStationIndex,
+				);
+				const arrTimeIndex = resolveIndex(
+					hasHeader ? findHeaderIndex(headers, ["sta", "arr", "arrive", "on", "arrivaltime"]) : -1,
+					defaultIndexes.arrTimeIndex,
+				);
+				const endTimeIndex = resolveIndex(
+					hasHeader ? findHeaderIndex(headers, ["end", "endtime", "finishtime", "finish"]) : -1,
+					defaultIndexes.endTimeIndex,
+				);
 				
 				const startDate = parseRosterDateRange(doc) || new Date();
 				let currentDate = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
@@ -874,23 +912,70 @@ Day Off,2026-02-16 00:00,2026-02-16 23:59,Home,`;
 				}
 
 				const rows = parseTextToRows(content);
-				const headers = rows[0].map((cell) => normalizeHeader(cell));
+				if (!rows.length) {
+					events = [];
+					renderEvents();
+					return;
+				}
 
-				const titleIndex = findHeaderIndex(headers, ["title", "duty", "task", "activity"]);
-				const startIndex = findHeaderIndex(headers, ["start", "starttime", "startdate"]);
-				const endIndex = findHeaderIndex(headers, ["end", "endtime", "enddate"]);
-				const dateIndex = findHeaderIndex(headers, ["date", "day"]);
-				const startTimeIndex = findHeaderIndex(headers, ["std", "dept", "dep", "depart", "off", "report", "starttime"]);
-				const endTimeIndex = findHeaderIndex(headers, ["sta", "arr", "arrive", "on", "endtime"]);
-				const fromIndex = findHeaderIndex(headers, ["from", "origin", "departure", "depapt", "fromiata"]);
-				const toIndex = findHeaderIndex(headers, ["to", "dest", "destination", "arrapt", "toiata"]);
-				const locationIndex = findHeaderIndex(headers, ["location", "base", "station"]);
-				const notesIndex = findHeaderIndex(headers, ["notes", "remark", "remarks", "comment"]);
-				const flightIndex = findHeaderIndex(headers, ["flight", "flt", "flightno", "flightnumber"]);
-				const codeIndex = findHeaderIndex(headers, ["code", "dutycode"]);
+				const headerRow = rows[0];
+				const hasHeader = isLikelyHeaderRow(headerRow);
+				const headers = hasHeader ? headerRow.map((cell) => normalizeHeader(cell)) : [];
+				const dataRows = hasHeader ? rows.slice(1) : rows;
 
-				events = rows
-					.slice(1)
+				const defaultIndexes = {
+					dateIndex: 0,
+					typeIndex: 1,
+					repTimeIndex: 2,
+					flightIndex: 3,
+					fromIndex: 4,
+					startTimeIndex: 5,
+					toIndex: 6,
+					endTimeIndex: 7,
+					locationIndex: -1,
+					notesIndex: -1,
+					codeIndex: 1,
+				};
+
+				const resolveIndex = (index, fallback) => (index === -1 ? fallback : index);
+				const titleIndex = resolveIndex(
+					hasHeader ? findHeaderIndex(headers, ["title", "duty", "task", "activity"]) : -1,
+					-1,
+				);
+				const startIndex = resolveIndex(hasHeader ? findHeaderIndex(headers, ["start", "starttime", "startdate"]) : -1, -1);
+				const endIndex = resolveIndex(hasHeader ? findHeaderIndex(headers, ["end", "endtime", "enddate"]) : -1, -1);
+				const dateIndex = resolveIndex(hasHeader ? findHeaderIndex(headers, ["date", "day"]) : -1, defaultIndexes.dateIndex);
+				const startTimeIndex = resolveIndex(
+					hasHeader ? findHeaderIndex(headers, ["std", "dept", "dep", "depart", "off", "report", "starttime"]) : -1,
+					defaultIndexes.startTimeIndex,
+				);
+				const endTimeIndex = resolveIndex(
+					hasHeader ? findHeaderIndex(headers, ["sta", "arr", "arrive", "on", "endtime"]) : -1,
+					defaultIndexes.endTimeIndex,
+				);
+				const fromIndex = resolveIndex(
+					hasHeader ? findHeaderIndex(headers, ["from", "origin", "departure", "depapt", "fromiata"]) : -1,
+					defaultIndexes.fromIndex,
+				);
+				const toIndex = resolveIndex(
+					hasHeader ? findHeaderIndex(headers, ["to", "dest", "destination", "arrapt", "toiata"]) : -1,
+					defaultIndexes.toIndex,
+				);
+				const locationIndex = resolveIndex(
+					hasHeader ? findHeaderIndex(headers, ["location", "base", "station"]) : -1,
+					defaultIndexes.locationIndex,
+				);
+				const notesIndex = resolveIndex(
+					hasHeader ? findHeaderIndex(headers, ["notes", "remark", "remarks", "comment"]) : -1,
+					defaultIndexes.notesIndex,
+				);
+				const flightIndex = resolveIndex(
+					hasHeader ? findHeaderIndex(headers, ["flight", "flt", "flightno", "flightnumber"]) : -1,
+					defaultIndexes.flightIndex,
+				);
+				const codeIndex = resolveIndex(hasHeader ? findHeaderIndex(headers, ["code", "dutycode"]) : -1, defaultIndexes.codeIndex);
+
+				events = dataRows
 					.map((row) => {
 						const rawTitle =
 							row[titleIndex] || row[flightIndex] || row[codeIndex] || row[0] || "Untitled";
