@@ -375,23 +375,11 @@
 
 			<section class="grid">
 				<div class="panel upload">
-					<h3>1. Import roster</h3>
-					<p>Upload a CSV or paste a roster table (tab-separated or HTML from SharePoint).</p>
-					<div class="drop">
-						<label for="roster-file">Roster file (.csv)</label>
-						<input type="file" id="roster-file" accept=".csv" />
-					</div>
-					<div class="drop">
-						<label for="roster-html">Paste roster HTML</label>
-						<div id="roster-html" class="paste-box" contenteditable="true">
-							Click here, then paste directly from the roster page
-						</div>
-					</div>
-					<textarea
-						id="roster-text"
-						placeholder="Date\tType\tRep. time\tFlight No.\tStation\tTime\tStation\tTime&#10;01 Sun\tXXR\t00:01\t\t\t\t\t23:59"
-					></textarea>
-					<div class="meta-row">
+				<h3>1. Paste your roster</h3>
+				<p>Copy your roster table from SharePoint and paste it here.</p>
+				<div id="roster-html" class="paste-box" contenteditable="true">
+					Click here, then paste directly from the roster page
+				</div>
 						<select id="timezone">
 							<option value="local">Use local time</option>
 							<option value="utc">Convert to UTC</option>
@@ -437,13 +425,11 @@
 
 			<footer>
 				<span>Built for crew workflows. Everything stays in your browser.</span>
-				<span>Roster format: CSV or tab-separated table paste</span>
+				<span>Paste your SharePoint roster directly</span>
 			</footer>
 		</div>
 
 		<script>
-			const rosterFile = document.getElementById("roster-file");
-			const rosterText = document.getElementById("roster-text");
 			const rosterHtml = document.getElementById("roster-html");
 			const parseBtn = document.getElementById("parse-btn");
 			const timeline = document.getElementById("timeline");
@@ -632,12 +618,28 @@ Day Off,2026-02-16 00:00,2026-02-16 23:59,Home,`;
 				const parsed = parseHtmlTable(content);
 				if (!parsed) return [];
 				const { doc, matrix } = parsed;
+				
+				// Find header row with flexible detection
 				const headerIndex = matrix.findIndex((row) => {
 					const normalized = row.map((cell) => normalizeHeader(cell || ""));
-					return normalized.includes("date") && normalized.some((cell) => cell.includes("flight"));
+					return normalized.includes("date") || normalized.some((cell) => cell.includes("flight") || cell.includes("dep") || cell.includes("arr"));
 				});
 				if (headerIndex === -1) return [];
+				
+				const headers = matrix[headerIndex].map((cell) => normalizeHeader(cell || ""));
 				const rows = matrix.slice(headerIndex + 1);
+				
+				// Flexible column detection using findHeaderIndex
+				const dateIndex = findHeaderIndex(headers, ["date", "day"]);
+				const typeIndex = findHeaderIndex(headers, ["type", "code", "dutycode"]);
+				const repTimeIndex = findHeaderIndex(headers, ["rep", "report", "std", "dept", "dep", "off", "reporttime"]);
+				const flightIndex = findHeaderIndex(headers, ["flight", "flt", "flightno", "flightnumber"]);
+				const depStationIndex = findHeaderIndex(headers, ["from", "origin", "departure", "depapt", "dep", "sta"]);
+				const depTimeIndex = findHeaderIndex(headers, ["std", "dept", "dep", "depart", "off", "reporttime"]);
+				const arrStationIndex = findHeaderIndex(headers, ["to", "dest", "destination", "arrapt", "arr"]);
+				const arrTimeIndex = findHeaderIndex(headers, ["sta", "arr", "arrive", "on", "arrivaltime"]);
+				const endTimeIndex = findHeaderIndex(headers, ["end", "endtime", "finishtime", "finish"]);
+				
 				const startDate = parseRosterDateRange(doc) || new Date();
 				let currentDate = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
 				let lastDay = null;
@@ -645,7 +647,8 @@ Day Off,2026-02-16 00:00,2026-02-16 23:59,Home,`;
 
 				return rows
 					.map((row) => {
-						const dateText = row[0] || "";
+						// Extract date and update currentDate
+						const dateText = dateIndex !== -1 ? row[dateIndex] : row[0] || "";
 						const dayMatch = dateText.match(/\b(\d{1,2})\b/);
 						if (dayMatch) {
 							const day = Number(dayMatch[1]);
@@ -656,17 +659,19 @@ Day Off,2026-02-16 00:00,2026-02-16 23:59,Home,`;
 							lastDay = day;
 						}
 
-						const typeCode = row[1] || "";
-						const repTime = row[2] || "";
-						const flightNo = row[3] || "";
-						const depStation = row[4] || "";
-						const depTime = row[5] || "";
-						const arrStation = row[6] || "";
-						const arrTime = row[7] || "";
-						const endTime = row[9] || "";
+						const typeCode = (typeIndex !== -1 ? row[typeIndex] : row[1] || "").toUpperCase().trim();
+						const repTime = repTimeIndex !== -1 ? row[repTimeIndex] : row[2] || "";
+						const flightNo = (flightIndex !== -1 ? row[flightIndex] : row[3] || "").trim();
+						const depStation = (depStationIndex !== -1 ? row[depStationIndex] : row[4] || "").toUpperCase().trim();
+						const depTime = depTimeIndex !== -1 ? row[depTimeIndex] : row[5] || "";
+						const arrStation = (arrStationIndex !== -1 ? row[arrStationIndex] : row[6] || "").toUpperCase().trim();
+						const arrTime = arrTimeIndex !== -1 ? row[arrTimeIndex] : row[7] || "";
+						const endTime = endTimeIndex !== -1 ? row[endTimeIndex] : row[9] || "";
 						const detailText = row.find((cell) => cell && cell.toLowerCase().includes("day off")) || "";
 
 						const dateValue = formatDate(currentDate);
+						
+						// Check for day-off details text
 						if (!flightNo && !depStation && detailText) {
 							const startValue = combineDateTime(dateValue, repTime || "00:00");
 							const endValue = combineDateTime(dateValue, endTime || "23:59");
@@ -679,28 +684,52 @@ Day Off,2026-02-16 00:00,2026-02-16 23:59,Home,`;
 							};
 						}
 
+						// Check for day-off codes
 						if (!flightNo && !depStation && typeCode && dayOffCodes.has(typeCode)) {
 							const startValue = combineDateTime(dateValue, repTime || "00:00");
 							const endValue = combineDateTime(dateValue, endTime || "23:59");
 							return {
-								title: "Day Off",
+								title: `Day Off (${typeCode})`,
 								start: toDate(startValue),
 								end: toDate(endValue),
 								location: "",
-								notes: typeCode ? `Code: ${typeCode}` : "",
+								notes: "",
 							};
 						}
 
+						// Handle flights
 						if (flightNo || depStation || arrStation) {
-							const flightLabel = flightNo ? `EK${flightNo}` : typeCode || "Flight";
-							const startValue = combineDateTime(dateValue, depTime);
-							const endValue = combineDateTime(dateValue, arrTime);
+							// Parse flight number - handle both "EK123" and "123" formats
+							let flightLabel = "";
+							if (flightNo) {
+								if (/^[A-Z]{2}\d+/.test(flightNo)) {
+									flightLabel = flightNo; // Already has airline code
+								} else if (/^\d+/.test(flightNo)) {
+									flightLabel = `EK${flightNo}`; // Add EK prefix if just number
+								} else {
+									flightLabel = flightNo;
+								}
+							} else {
+								flightLabel = typeCode || "Flight";
+							}
+							
+							const startValue = combineDateTime(dateValue, depTime || repTime);
+							const endValue = combineDateTime(dateValue, arrTime || endTime);
+							let start = toDate(startValue);
+							let end = toDate(endValue);
+							
+							// Handle overnight flights
+							if (start && end && end < start) {
+								end = new Date(end.getTime());
+								end.setDate(end.getDate() + 1);
+							}
+							
 							return {
 								title: `${flightLabel} ${depStation}-${arrStation}`.trim(),
-								start: toDate(startValue),
-								end: toDate(endValue),
-								location: depStation && arrStation ? `${depStation} -> ${arrStation}` : depStation || arrStation || "",
-								notes: typeCode ? `Code: ${typeCode}` : "",
+								start,
+								end,
+								location: depStation && arrStation ? `${depStation} → ${arrStation}` : depStation || arrStation || "",
+								notes: typeCode && !dayOffCodes.has(typeCode) ? `Code: ${typeCode}` : "",
 							};
 						}
 
@@ -768,13 +797,7 @@ Day Off,2026-02-16 00:00,2026-02-16 23:59,Home,`;
 			};
 
 			const parseRoster = async () => {
-				let content = rosterText.value.trim();
-				if (!content && pastedHtml) {
-					content = pastedHtml;
-				}
-				if (!content && rosterFile.files.length) {
-					content = await rosterFile.files[0].text();
-				}
+				const content = pastedHtml.trim();
 				if (!content) {
 					events = [];
 					renderEvents();
@@ -889,14 +912,13 @@ Day Off,2026-02-16 00:00,2026-02-16 23:59,Home,`;
 			};
 
 			loadDemo.addEventListener("click", () => {
-				rosterText.value = demoText;
-				rosterFile.value = "";
+				const demoHtml = `<table><tr><th>Date</th><th>Type</th><th>Flight</th><th>From</th><th>To</th><th>Start</th><th>End</th></tr><tr><td>12</td><td>Duty</td><td>EK123</td><td>DXB</td><td>LHR</td><td>06:30</td><td>12:45</td></tr><tr><td>13</td><td>XX</td><td></td><td></td><td></td><td>00:00</td><td>23:59</td></tr></table>`;
+				pastedHtml = demoHtml;
+				rosterHtml.textContent = "Demo roster loaded. Click Fetch flights & events.";
 				parseRoster();
 			});
 
 			clearAll.addEventListener("click", () => {
-				rosterText.value = "";
-				rosterFile.value = "";
 				pastedHtml = "";
 				rosterHtml.textContent = "Click here, then paste directly from the roster page";
 				events = [];
@@ -906,35 +928,21 @@ Day Off,2026-02-16 00:00,2026-02-16 23:59,Home,`;
 			parseBtn.addEventListener("click", parseRoster);
 			downloadBtn.addEventListener("click", downloadIcs);
 			copyBtn.addEventListener("click", copyIcs);
-			rosterFile.addEventListener("change", () => {
-				rosterText.value = "";
-				pastedHtml = "";
-				rosterHtml.textContent = "Click here, then paste directly from the roster page";
+
+			rosterHtml.addEventListener("focus", () => {
+				if (!pastedHtml && rosterHtml.textContent === "Click here, then paste directly from the roster page") {
+					rosterHtml.textContent = "";
+				}
 			});
-+
-+			rosterText.addEventListener("input", () => {
-+				if (rosterText.value.trim()) {
-+					pastedHtml = "";
-+					rosterHtml.textContent = "Click here, then paste directly from the roster page";
-+				}
-+			});
-+
-+			rosterHtml.addEventListener("focus", () => {
-+				if (!pastedHtml) {
-+					rosterHtml.textContent = "";
-+				}
-+			});
-+
-+			rosterHtml.addEventListener("paste", (event) => {
-+				const html = event.clipboardData && event.clipboardData.getData("text/html");
-+				if (html) {
-+					event.preventDefault();
-+					pastedHtml = html;
-+					rosterHtml.textContent = "Roster HTML captured. Click Fetch flights & events.";
-+					rosterText.value = "";
-+					rosterFile.value = "";
-+				}
-+			});
+
+			rosterHtml.addEventListener("paste", (event) => {
+				const html = event.clipboardData && event.clipboardData.getData("text/html");
+				if (html) {
+					event.preventDefault();
+					pastedHtml = html;
+					rosterHtml.textContent = "Roster HTML captured. Click Fetch flights & events.";
+				}
+			});
 
 			if ("serviceWorker" in navigator) {
 				window.addEventListener("load", () => {
