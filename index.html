@@ -564,16 +564,29 @@ Day Off,2026-02-16 00:00,2026-02-16 23:59,Home,`;
 			};
 
 			const parseTextToRows = (text) => {
-				const hasTabs = text.includes("\t");
-				return hasTabs ? parseTSV(text) : parseCSV(text);
+				const normalized = String(text || "").replace(/\u00a0/g, " ");
+				const hasTabs = normalized.includes("\t");
+				const hasCsv = /,/.test(normalized) && /\n/.test(normalized);
+				if (hasTabs) return parseTSV(normalized);
+				if (hasCsv) return parseCSV(normalized);
+				return normalized
+					.split(/\r?\n/)
+					.map((line) => line.trim())
+					.filter(Boolean)
+					.map((line) => line.split(/\s{2,}/).map((cell) => cell.trim()))
+					.filter((row) => row.some((cell) => cell !== ""));
+			};
+
+			const parseRosterDateRangeText = (text) => {
+				const matches = [...String(text || "").matchAll(/(\d{1,2})-(\d{1,2})-(\d{4})/g)];
+				if (!matches.length) return null;
+				const [day, month, year] = matches[0].slice(1).map(Number);
+				return new Date(year, month - 1, day);
 			};
 
 			const parseRosterDateRange = (doc) => {
 				const text = doc.body ? doc.body.textContent : "";
-				const matches = [...text.matchAll(/(\d{1,2})-(\d{1,2})-(\d{4})/g)];
-				if (!matches.length) return null;
-				const [day, month, year] = matches[0].slice(1).map(Number);
-				return new Date(year, month - 1, day);
+				return parseRosterDateRangeText(text);
 			};
 
 			const parseHtmlTable = (html) => {
@@ -659,6 +672,20 @@ Day Off,2026-02-16 00:00,2026-02-16 23:59,Home,`;
 				return `${year}-${month}-${day}`;
 			};
 
+			const resolveRosterDate = (rawDate, state) => {
+				const dateText = String(rawDate || "").trim();
+				const dayMatch = dateText.match(/\b(\d{1,2})\b/);
+				if (dayMatch) {
+					const day = Number(dayMatch[1]);
+					if (state.lastDay !== null && day < state.lastDay) {
+						state.currentDate = new Date(state.currentDate.getFullYear(), state.currentDate.getMonth() + 1, 1);
+					}
+					state.currentDate = new Date(state.currentDate.getFullYear(), state.currentDate.getMonth(), day);
+					state.lastDay = day;
+				}
+				return formatDate(state.currentDate);
+			};
+
 			const normalizeTime = (value) => {
 				const trimmed = String(value || "").trim();
 				if (!trimmed) return "";
@@ -740,23 +767,17 @@ Day Off,2026-02-16 00:00,2026-02-16 23:59,Home,`;
 				);
 				
 				const startDate = parseRosterDateRange(doc) || new Date();
-				let currentDate = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
-				let lastDay = null;
+				const dateState = {
+					currentDate: new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate()),
+					lastDay: null,
+				};
 				const dayOffCodes = new Set(["XX", "XXR", "XXV", "XXC", "DO", "LV", "EL", "ROF"]);
 
 				return rows
 					.map((row) => {
 						// Extract date and update currentDate
 						const dateText = dateIndex !== -1 ? row[dateIndex] : row[0] || "";
-						const dayMatch = dateText.match(/\b(\d{1,2})\b/);
-						if (dayMatch) {
-							const day = Number(dayMatch[1]);
-							if (lastDay !== null && day < lastDay) {
-								currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
-							}
-							currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
-							lastDay = day;
-						}
+						const dateValue = resolveRosterDate(dateText, dateState);
 
 						const typeCode = (typeIndex !== -1 ? row[typeIndex] : row[1] || "").toUpperCase().trim();
 						const repTime = repTimeIndex !== -1 ? row[repTimeIndex] : row[2] || "";
@@ -768,7 +789,6 @@ Day Off,2026-02-16 00:00,2026-02-16 23:59,Home,`;
 						const endTime = endTimeIndex !== -1 ? row[endTimeIndex] : row[9] || "";
 						const detailText = row.find((cell) => cell && cell.toLowerCase().includes("day off")) || "";
 
-						const dateValue = formatDate(currentDate);
 						
 						// Check for day-off details text
 						if (!flightNo && !depStation && detailText) {
@@ -922,6 +942,11 @@ Day Off,2026-02-16 00:00,2026-02-16 23:59,Home,`;
 				const hasHeader = isLikelyHeaderRow(headerRow);
 				const headers = hasHeader ? headerRow.map((cell) => normalizeHeader(cell)) : [];
 				const dataRows = hasHeader ? rows.slice(1) : rows;
+				const baseDate = parseRosterDateRangeText(content) || new Date();
+				const dateState = {
+					currentDate: new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate()),
+					lastDay: null,
+				};
 
 				const defaultIndexes = {
 					dateIndex: 0,
@@ -983,12 +1008,13 @@ Day Off,2026-02-16 00:00,2026-02-16 23:59,Home,`;
 						const to = row[toIndex] || "";
 						const titleSuffix = from && to ? ` ${from}-${to}` : "";
 						const title = rawTitle.includes(from) || rawTitle.includes(to) ? rawTitle : `${rawTitle}${titleSuffix}`;
+						const dateValue = resolveRosterDate(row[dateIndex], dateState);
 						const startValue = startIndex !== -1
 							? row[startIndex]
-							: combineDateTime(row[dateIndex], row[startTimeIndex]);
+							: combineDateTime(dateValue, row[startTimeIndex]);
 						const endValue = endIndex !== -1
 							? row[endIndex]
-							: combineDateTime(row[dateIndex], row[endTimeIndex]);
+							: combineDateTime(dateValue, row[endTimeIndex]);
 						const start = toDate(startValue);
 						let end = toDate(endValue);
 						if (start && end && end < start) {
