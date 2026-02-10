@@ -241,6 +241,23 @@
 				resize: vertical;
 				background: #fff;
 			}
++
++			.paste-box {
++				min-height: 90px;
++				border-radius: var(--radius-md);
++				border: 1px solid rgba(11, 11, 16, 0.12);
++				padding: 12px;
++				background: #fff;
++				font-size: 14px;
++				color: rgba(11, 11, 16, 0.7);
++				outline: none;
++			}
++
++			.paste-box:focus {
++				border-color: rgba(27, 154, 170, 0.6);
++				box-shadow: 0 0 0 3px rgba(27, 154, 170, 0.15);
++				color: var(--ink);
++			}
 
 			.meta-row {
 				display: grid;
@@ -364,6 +381,12 @@
 						<label for="roster-file">Roster file (.csv)</label>
 						<input type="file" id="roster-file" accept=".csv" />
 					</div>
+					<div class="drop">
+						<label for="roster-html">Paste roster HTML</label>
+						<div id="roster-html" class="paste-box" contenteditable="true">
+							Click here, then paste directly from the roster page
+						</div>
+					</div>
 					<textarea
 						id="roster-text"
 						placeholder="Date\tType\tRep. time\tFlight No.\tStation\tTime\tStation\tTime&#10;01 Sun\tXXR\t00:01\t\t\t\t\t23:59"
@@ -421,6 +444,7 @@
 		<script>
 			const rosterFile = document.getElementById("roster-file");
 			const rosterText = document.getElementById("roster-text");
+			const rosterHtml = document.getElementById("roster-html");
 			const parseBtn = document.getElementById("parse-btn");
 			const timeline = document.getElementById("timeline");
 			const summary = document.getElementById("summary");
@@ -433,6 +457,7 @@
 			const clearAll = document.getElementById("clear-all");
 
 			let events = [];
+			let pastedHtml = "";
 
 			const demoText = `title,start,end,location,notes
 LH123 FRA-JFK,2026-02-12 06:30,2026-02-12 09:45,Frankfurt,Flight duty
@@ -744,6 +769,9 @@ Day Off,2026-02-16 00:00,2026-02-16 23:59,Home,`;
 
 			const parseRoster = async () => {
 				let content = rosterText.value.trim();
+				if (!content && pastedHtml) {
+					content = pastedHtml;
+				}
 				if (!content && rosterFile.files.length) {
 					content = await rosterFile.files[0].text();
 				}
@@ -869,6 +897,8 @@ Day Off,2026-02-16 00:00,2026-02-16 23:59,Home,`;
 			clearAll.addEventListener("click", () => {
 				rosterText.value = "";
 				rosterFile.value = "";
+				pastedHtml = "";
+				rosterHtml.textContent = "Click here, then paste directly from the roster page";
 				events = [];
 				renderEvents();
 			});
@@ -878,7 +908,33 @@ Day Off,2026-02-16 00:00,2026-02-16 23:59,Home,`;
 			copyBtn.addEventListener("click", copyIcs);
 			rosterFile.addEventListener("change", () => {
 				rosterText.value = "";
+				pastedHtml = "";
+				rosterHtml.textContent = "Click here, then paste directly from the roster page";
 			});
++
++			rosterText.addEventListener("input", () => {
++				if (rosterText.value.trim()) {
++					pastedHtml = "";
++					rosterHtml.textContent = "Click here, then paste directly from the roster page";
++				}
++			});
++
++			rosterHtml.addEventListener("focus", () => {
++				if (!pastedHtml) {
++					rosterHtml.textContent = "";
++				}
++			});
++
++			rosterHtml.addEventListener("paste", (event) => {
++				const html = event.clipboardData && event.clipboardData.getData("text/html");
++				if (html) {
++					event.preventDefault();
++					pastedHtml = html;
++					rosterHtml.textContent = "Roster HTML captured. Click Fetch flights & events.";
++					rosterText.value = "";
++					rosterFile.value = "";
++				}
++			});
 
 			if ("serviceWorker" in navigator) {
 				window.addEventListener("load", () => {
