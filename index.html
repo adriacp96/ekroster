@@ -241,23 +241,60 @@
 				resize: vertical;
 				background: #fff;
 			}
-+
-+			.paste-box {
-+				min-height: 90px;
-+				border-radius: var(--radius-md);
-+				border: 1px solid rgba(11, 11, 16, 0.12);
-+				padding: 12px;
-+				background: #fff;
-+				font-size: 14px;
-+				color: rgba(11, 11, 16, 0.7);
-+				outline: none;
-+			}
-+
-+			.paste-box:focus {
-+				border-color: rgba(27, 154, 170, 0.6);
-+				box-shadow: 0 0 0 3px rgba(27, 154, 170, 0.15);
-+				color: var(--ink);
-+			}
+
+			.paste-box {
+				min-height: 90px;
+				border-radius: var(--radius-md);
+				border: 1px solid rgba(11, 11, 16, 0.12);
+				padding: 12px;
+				background: #fff;
+				font-size: 14px;
+				color: rgba(11, 11, 16, 0.7);
+				outline: none;
+			}
+
+			.paste-box:focus {
+				border-color: rgba(27, 154, 170, 0.6);
+				box-shadow: 0 0 0 3px rgba(27, 154, 170, 0.15);
+				color: var(--ink);
+			}
+
+			.paste-modal {
+				position: fixed;
+				inset: 0;
+				background: rgba(11, 11, 16, 0.4);
+				display: none;
+				align-items: center;
+				justify-content: center;
+				padding: 24px;
+				z-index: 20;
+			}
+
+			.paste-modal.is-open {
+				display: flex;
+			}
+
+			.paste-modal-card {
+				background: #fff;
+				border-radius: var(--radius-lg);
+				padding: 20px;
+				max-width: 560px;
+				width: 100%;
+				box-shadow: var(--shadow);
+				display: grid;
+				gap: 12px;
+			}
+
+			.paste-modal-header {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				gap: 12px;
+			}
+
+			.paste-modal h4 {
+				font-size: 18px;
+			}
 
 			.meta-row {
 				display: grid;
@@ -426,8 +463,23 @@
 			</footer>
 		</div>
 
+		<div id="paste-modal" class="paste-modal" aria-hidden="true">
+			<div class="paste-modal-card">
+				<div class="paste-modal-header">
+					<h4>Paste roster</h4>
+					<button class="btn btn-secondary" id="paste-close" type="button">Close</button>
+				</div>
+				<p id="paste-help">Press Cmd+V to paste the roster table from SharePoint.</p>
+				<div id="paste-fallback" class="paste-box" contenteditable="true"></div>
+			</div>
+		</div>
+
 		<script>
 			const pasteBtn = document.getElementById("paste-btn");
+			const pasteModal = document.getElementById("paste-modal");
+			const pasteFallback = document.getElementById("paste-fallback");
+			const pasteHelp = document.getElementById("paste-help");
+			const pasteClose = document.getElementById("paste-close");
 			const timeline = document.getElementById("timeline");
 			const summary = document.getElementById("summary");
 			const stats = document.getElementById("stats");
@@ -440,6 +492,19 @@
 
 			let events = [];
 			let pastedHtml = "";
+
+			const openPasteModal = (message) => {
+				pasteHelp.textContent = message;
+				pasteFallback.textContent = "";
+				pasteModal.classList.add("is-open");
+				pasteModal.setAttribute("aria-hidden", "false");
+				setTimeout(() => pasteFallback.focus(), 0);
+			};
+
+			const closePasteModal = () => {
+				pasteModal.classList.remove("is-open");
+				pasteModal.setAttribute("aria-hidden", "true");
+			};
 
 			const demoText = `title,start,end,location,notes
 LH123 FRA-JFK,2026-02-12 06:30,2026-02-12 09:45,Frankfurt,Flight duty
@@ -921,6 +986,23 @@ Day Off,2026-02-16 00:00,2026-02-16 23:59,Home,`;
 				renderEvents();
 			});
 
+			pasteClose.addEventListener("click", () => {
+				closePasteModal();
+			});
+
+			pasteFallback.addEventListener("paste", (event) => {
+				const html = event.clipboardData && event.clipboardData.getData("text/html");
+				const text = event.clipboardData && event.clipboardData.getData("text/plain");
+				const content = html || text || "";
+				if (content) {
+					event.preventDefault();
+					pastedHtml = content;
+					pasteBtn.textContent = "✓ Roster pasted";
+					closePasteModal();
+					parseRoster();
+				}
+			});
+
 			pasteBtn.addEventListener("click", async () => {
 				try {
 					if (navigator.clipboard && navigator.clipboard.read) {
@@ -947,10 +1029,10 @@ Day Off,2026-02-16 00:00,2026-02-16 23:59,Home,`;
 						}
 					}
 
-					alert("Clipboard was empty. Copy the roster table from SharePoint and try again.");
+					openPasteModal("Clipboard access is blocked in Safari. Press Cmd+V to paste the roster table.");
 				} catch (err) {
 					console.error("Clipboard read failed:", err);
-					alert("Clipboard access failed. Try copying again or use a browser that allows clipboard access on localhost.");
+					openPasteModal("Clipboard access failed. Press Cmd+V to paste the roster table.");
 				}
 			});
 
